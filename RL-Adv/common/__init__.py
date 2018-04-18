@@ -1,3 +1,10 @@
+import os
+
+cwd = os.getcwd()
+os.chdir(os.path.join(cwd, 'common'))
+
+import replay_buffer
 import layers
 import wrappers
-import replay_buffer
+
+os.chdir(cwd)
