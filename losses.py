@@ -21,9 +21,9 @@ class Loss():
 
         if isinstance(dist, np.ndarray):
             dist = Variable(torch.from_numpy(dist).float())
-        elif isinstance(dist, torch.FloatTensor):
+        elif 'FloatTensor' in str(type(dist)):
             dist = Variable(dist)
-        elif isinstance(dist, torch.DoubleTensor):
+        elif 'DoubleTensor' in str(type(dist)):
             dist = Variable(dist).float()
 
         if not isinstance(dist, torch.autograd.Variable): 
@@ -65,11 +65,12 @@ class Wasserstein(Loss):
         self.dist_matrix = distance_matrix
         self.dist_tensor = Variable(torch.from_numpy(distance_matrix)).float()
         self.dist_tensor = self.dist_tensor.unsqueeze(0)
+        if args.cuda: self.dist_tensor = self.dist_tensor.cuda()
 
     def get_transport_plans(self, source_dist, target_dist):
         all_plans = []
         for i in range(source_dist.size(0)):
-            transport_plan = emd_with_flow(target_dist[i].data.double().numpy(), 
+            transport_plan = emd_with_flow(target_dist[i].data.double().cpu().numpy(), 
                                            source_dist[i].data.double().cpu().numpy(),
                                            self.dist_matrix)[1]
             transport_plan = Variable(torch.from_numpy(np.array(transport_plan)))
@@ -81,8 +82,9 @@ class Wasserstein(Loss):
     def calculate_loss_(self, source_dist, target_dist):
         transport_plans = self.get_transport_plans(source_dist, target_dist)
         source_dist = source_dist.unsqueeze(1).repeat(1, self.args.num_atoms, 1)
-        normalized_plan = transport_plans / source_dist.detach()
+        normalized_plan = transport_plans / (source_dist + 1e-10).detach()
         cost = normalized_plan * self.dist_tensor * source_dist
+        if np.isnan(cost.cpu().data.numpy()).any(): raise Exception('nan detected')
         return cost.sum()
 
 
@@ -104,7 +106,8 @@ class Cramer(Loss):
            for j in range(i):
                mask[i-1, j] = 1
        
-       self.mask = Variable(torch.from_numpy(mask).float()) 
+       self.mask = Variable(torch.from_numpy(mask).float())
+       if args.cuda: self.mask = self.mask.cuda()
    
     def get_cdf(self, categorical_dist):
         dist = categorical_dist.unsqueeze(1).expand(-1, self.args.num_atoms, -1)

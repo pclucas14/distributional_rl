@@ -21,7 +21,7 @@ parser.add_argument('--num_atoms', type=int, default=51)
 parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--loss', type=str, default='cramer')
 parser.add_argument('--batch_size', type=int, default=32)
-parser.add_argument('--gamma', type=int, default=0.99)
+parser.add_argument('--gamma', type=float, default=0.99)
 parser.add_argument('--eval_runs', type=int, default=10)
 parser.add_argument('--exp_path', type=str, default='experiments/test')
 parser.add_argument('--exp_common_log', type=str, default='experiments/common.txt')
@@ -48,7 +48,7 @@ if 'cartpole' in args.env.lower():
 elif 'acrobot' in args.env.lower():
     env = gym.make('Acrobot-v1')
     args_dict['Vmin'] = -500
-    args_dict['Vmax'] = -100
+    args_dict['Vmax'] = 0
     num_frames = 25000
 elif 'pong' in args.env.lower():
     env = make_atari('PongNoFrameskip-v4')
@@ -80,7 +80,7 @@ if 'kl' in args.loss.lower():
     loss_fn = KL(args)
 elif 'wasserstein' in args.loss.lower():
     loss_fn = Wasserstein(args)
-elif args.loss.lower() in ['cramer', 'cramér']:
+elif 'cramer' in args.loss.lower():
     loss_fn = Cramer(args)
 
 # initialize replay buffer
@@ -151,7 +151,7 @@ for i in range(1, num_frames + 1):
         if episodes % 5 == 0 and args.verbose: 
             print('last 5 episode rewards {}'.format(str(episode_rewards[-5:])))
             print('last 5 losses {}'.format(str(losses[-5:])))
-            plot(i, episode_rewards, losses, bin_size=5)
+            # plot(i, episode_rewards, losses, bin_size=5)
 
 '''
 Eval Mode
