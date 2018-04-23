@@ -23,7 +23,7 @@ parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--loss', type=str, default='cramer')
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--gamma', type=float, default=0.99)
-parser.add_argument('--eval_runs', type=int, default=10)
+parser.add_argument('--eval_runs', type=int, default=100)
 parser.add_argument('--exp_path', type=str, default='experiments/test')
 parser.add_argument('--exp_common_log', type=str, default='experiments/common.txt')
 parser.add_argument('--verbose', action='store_true')
@@ -62,13 +62,13 @@ else:
 # more general settings
 if args.env.lower() in ['cartpole', 'acrobot']: 
     model = CategoricalDQN
-    lr = 5e-4
+    lr = 8e-4
     replay_buffer_size = 10000
     update_target_every = 100
     state_space = env.observation_space.shape[0]
 else: 
     model = CategoricalCnnDQN
-    lr = 1e-4
+    lr = 2e-4
     replay_buffer_size = 100000
     update_target_every = 1000
     env = wrap_pytorch(wrap_deepmind(env))
