@@ -7,6 +7,7 @@ import argparse
 import pdb
 import gym
 import argparse
+import os
 
 from common.replay_buffer import ReplayBuffer
 from common.wrappers import make_atari, wrap_deepmind, wrap_pytorch
@@ -182,3 +183,6 @@ print('average eval reward : {}'.format(np.mean(eval_episode_rewards)))
 logger.save_run()
 logger.log_to_common_file(args.exp_common_log)
 logger.signal_end()
+
+# save the model
+torch.save(current_model.state_dict(), os.path.join(args.exp_path, 'model.pth'))
