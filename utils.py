@@ -37,9 +37,9 @@ def target_distribution(next_state, rewards, dones, target_model, args):
     
     support = support.unsqueeze(0).expand_as(next_dist)
    
-    Tz = rewards + (1 - dones) * args.gamma * support
-    Tz = Tz.clamp(min=args.Vmin, max=args.Vmax)
-    b  = (Tz - args.Vmin) / delta_z
+    new_support = rewards + (1 - dones) * args.gamma * support
+    Tz = new_support.clamp(min=args.Vmin, max=args.Vmax)
+    b  = (new_support - args.Vmin) / delta_z
     l  = b.floor().long() # lower bound of each bin
     u  = b.ceil().long()  # upper bound of each bin
         
@@ -60,8 +60,8 @@ def target_distribution(next_state, rewards, dones, target_model, args):
     next_dist_eq = u == l
     next_dist_eq = next_dist * next_dist_eq.float()
     proj_dist.view(-1).index_add_(0, (l + offset).view(-1), (next_dist_eq).view(-1))
-    
-    return proj_dist
+   
+    return proj_dist, new_support
 
 
 '''
@@ -83,7 +83,7 @@ def to_attr(args):
 '''
 plot training statistic
 '''
-def plot(frame_idx, rewards, losses, bin_size=5):
+def plot(frame_idx, rewards, losses, bin_size=5, save=False):
     plt.close()
     if len(rewards) > bin_size:
         rewards = np.array(rewards)
@@ -102,5 +102,18 @@ def plot(frame_idx, rewards, losses, bin_size=5):
         losses = losses[remainder:] 
         losses = losses.reshape((-1, bin_size)).mean(axis=1)
     plt.plot(losses)
-    plt.draw()
-    plt.pause(0.001)
+    if save: 
+        plt.savefig('plot.png')
+    else: 
+        plt.draw()
+        plt.pause(0.001)
+
+
+def batch_distance_matrix(A, B):
+    A = A.unsqueeze(-1)
+    B = B.unsqueeze(-1)
+    r_A = (A * A).sum(dim=2, keepdim=True)
+    r_B = (B * B).sum(dim=2, keepdim=True)
+    m = torch.bmm(A, B.permute(0, 2, 1))
+    D = r_A - 2 * m + r_B.permute(0, 2, 1)
+    return D

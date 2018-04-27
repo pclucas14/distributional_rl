@@ -26,6 +26,7 @@ parser.add_argument('--gamma', type=float, default=0.99)
 parser.add_argument('--eval_runs', type=int, default=100)
 parser.add_argument('--exp_path', type=str, default='experiments/test')
 parser.add_argument('--exp_common_log', type=str, default='experiments/common.txt')
+parser.add_argument('--no_projection', action='store_true')
 parser.add_argument('--verbose', action='store_true')
 args = parser.parse_args()
 
@@ -45,12 +46,12 @@ if 'cartpole' in args.env.lower():
     env = gym.make('CartPole-v0')
     args_dict['Vmin'] = 0
     args_dict['Vmax'] = 200
-    num_frames = 15000
+    num_frames = 20000
 elif 'acrobot' in args.env.lower():
     env = gym.make('Acrobot-v1')
     args_dict['Vmin'] = -500
     args_dict['Vmax'] = 0
-    num_frames = 25000
+    num_frames = 40000
 elif 'pong' in args.env.lower():
     env = make_atari('PongNoFrameskip-v4')
     args_dict['Vmin'] = -20
@@ -62,9 +63,9 @@ else:
 # more general settings
 if args.env.lower() in ['cartpole', 'acrobot']: 
     model = CategoricalDQN
-    lr = 8e-4
+    lr = 4e-4
     replay_buffer_size = 10000
-    update_target_every = 100
+    update_target_every = 200
     state_space = env.observation_space.shape[0]
 else: 
     model = CategoricalCnnDQN
@@ -126,9 +127,9 @@ for i in range(1, num_frames + 1):
         source_dist = source_dist.gather(1, actions).squeeze(1)       
  
         # calculate target distribution
-        target_dist = target_distribution(next_states, rewards, dones, target_model, args)
+        target_dist, bins = target_distribution(next_states, rewards, dones, target_model, args)
        
-        loss = loss_fn(source_dist, target_dist)
+        loss = loss_fn(source_dist, bins if args.no_projection else target_dist)
         losses += [loss.data[0]]
         optimizer.zero_grad()
         loss.backward()
@@ -149,10 +150,11 @@ for i in range(1, num_frames + 1):
         episode_iters = 0
         episodes += 1
 
-        if episodes % 5 == 0 and args.verbose: 
+        if episodes % 10 == 0 and args.verbose:
+            print('iteration {}'.format(i))
             print('last 5 episode rewards {}'.format(str(episode_rewards[-5:])))
-            print('last 5 losses {}'.format(str(losses[-5:])))
-            # plot(i, episode_rewards, losses, bin_size=5)
+            print('last 5 losses {}\n\n'.format(str(losses[-5:])))
+            # plot(i, episode_rewards, losses, bin_size=5, save=True)
 
 '''
 Eval Mode

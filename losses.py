@@ -3,6 +3,8 @@ import torch.nn as nn
 from pyemd import * 
 from torch.autograd import Variable
 import numpy as np
+from utils import batch_distance_matrix
+import pdb
 
 '''
 Abstract Class for Losses
@@ -67,23 +69,41 @@ class Wasserstein(Loss):
         self.dist_tensor = self.dist_tensor.unsqueeze(0)
         if args.cuda: self.dist_tensor = self.dist_tensor.cuda()
 
-    def get_transport_plans(self, source_dist, target_dist):
+    def get_transport_plans(self, source_dist, target_dist, distances=None):
         all_plans = []
         for i in range(source_dist.size(0)):
+            dist = distances[i].double().cpu().data.numpy() if distances is not None else self.dist_matrix
             transport_plan = emd_with_flow(target_dist[i].data.double().cpu().numpy(), 
                                            source_dist[i].data.double().cpu().numpy(),
-                                           self.dist_matrix)[1]
+                                           dist)[1]
             transport_plan = Variable(torch.from_numpy(np.array(transport_plan)))
             all_plans += [transport_plan]
-        
+       
         out = torch.stack(all_plans, dim=0).float()
         return out.cuda() if source_dist.is_cuda else out
     
     def calculate_loss_(self, source_dist, target_dist):
-        transport_plans = self.get_transport_plans(source_dist, target_dist)
+        if self.args.no_projection: 
+            # in this case, the two distributions have the same mass across bins, 
+            # however each the bins have a different locations
+            support = torch.linspace(self.args.Vmin, self.args.Vmax, self.args.num_atoms)
+            support = support.unsqueeze(0).expand(source_dist.size(0), -1)
+            support = Variable(support, requires_grad=False)
+            support = support.cuda() if source_dist.is_cuda else support
+            distances = batch_distance_matrix(support, target_dist)
+            target = source_dist
+            dist_tensor = distances
+        else: 
+            distances = None
+            target = target_dist
+            dist_tensor = self.dist_tensor
+       
+        transport_plans = self.get_transport_plans(source_dist, target, distances=distances)
         source_dist = source_dist.unsqueeze(1).repeat(1, self.args.num_atoms, 1)
-        normalized_plan = transport_plans / (source_dist + 1e-10).detach()
-        cost = normalized_plan * self.dist_tensor * source_dist
+        normalized_plan = transport_plans / (source_dist).detach()
+        # replacing nans with zeros
+        normalized_plan[normalized_plan != normalized_plan] = 0
+        cost = normalized_plan * dist_tensor * source_dist
         if np.isnan(cost.cpu().data.numpy()).any(): raise Exception('nan detected')
         return cost.sum()
 
@@ -91,16 +111,26 @@ class Wasserstein(Loss):
 class KL(Loss):
     def __init__(self, args):
         super(KL, self).__init__(args)
+        assert not args.no_projection
         print('using KL loss')
 
     def calculate_loss_(self, source_dist, target_dist):
         source_dist.data.clamp(0.01, 0.99)
         return  - (target_dist * source_dist.log()).sum()
 
+class TV(Loss):
+    def __init__(self, args):
+        super(TV, self).__init__(args)
+        print('using TV loss')
+
+    def calculate_loss_(self, source_dist, target_dist):
+        return (source_dist - target_dist).abs().sum()
+
 class Cramer(Loss):
     def __init__(self, args):
-       print('using CRAMER loss')
        super(Cramer, self).__init__(args)
+       assert not args.no_projection
+       print('using CRAMER loss')
        mask = np.zeros((args.num_atoms, args.num_atoms))
        for i in range(args.num_atoms + 1):
            for j in range(i):
