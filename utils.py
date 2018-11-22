@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from matplotlib import pyplot as plt
-
+import os
 
 '''
 returns the target distribution projected back on the valid support.
@@ -39,7 +39,8 @@ def target_distribution(next_state, rewards, dones, target_model, args):
    
     new_support = rewards + (1 - dones) * args.gamma * support
     Tz = new_support.clamp(min=args.Vmin, max=args.Vmax)
-    b  = (new_support - args.Vmin) / delta_z
+    b  = (Tz - args.Vmin) / delta_z
+    assert b.min() >= 0, pdb.set_trace()
     l  = b.floor().long() # lower bound of each bin
     u  = b.ceil().long()  # upper bound of each bin
         
@@ -117,3 +118,26 @@ def batch_distance_matrix(A, B):
     m = torch.bmm(A, B.permute(0, 2, 1))
     D = r_A - 2 * m + r_B.permute(0, 2, 1)
     return D
+
+
+def print_and_log_scalar(writer, name, value, write_no, end_token=''):
+    if isinstance(value, list):
+        if len(value) == 0: return 
+        value = torch.mean(torch.stack(value))
+    zeros = 40 - len(name) 
+    name += ' ' * zeros
+    print('{} @ write {} = {:.4f}{}'.format(name, write_no, value, end_token))
+    writer.add_scalar(name, value, write_no)
+
+
+def print_and_save_args(args, path):
+    print(args)
+    # let's save the args as json to enable easy loading
+    import json
+    with open(os.path.join(path, 'args.json'), 'w') as f: 
+        json.dump(vars(args), f)
+
+
+def maybe_create_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)

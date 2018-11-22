@@ -9,7 +9,7 @@ import pdb
 '''
 Abstract Class for Losses
 '''
-class Loss():
+class Loss(object):
     def __init__(self, args):
         self.args = args
 

@@ -8,6 +8,7 @@ import pdb
 import gym
 import argparse
 import os
+import tensorboardX
 
 from common.replay_buffer import ReplayBuffer
 from common.wrappers import make_atari, wrap_deepmind, wrap_pytorch
@@ -24,7 +25,7 @@ parser.add_argument('--loss', type=str, default='cramer')
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--gamma', type=float, default=0.99)
 parser.add_argument('--eval_runs', type=int, default=100)
-parser.add_argument('--exp_path', type=str, default='experiments/test')
+parser.add_argument('--base_dir', type=str, default='experiments/test')
 parser.add_argument('--exp_common_log', type=str, default='experiments/common.txt')
 parser.add_argument('--no_projection', action='store_true')
 parser.add_argument('--verbose', action='store_true')
@@ -34,6 +35,9 @@ args = parser.parse_args()
 if args.seed:
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+
+if args.base_dir == 'experiments/test':
+    args.base_dir = 'experiments/{}_{}_{}'.format(args.env, args.loss, args.num_atoms)
 
 args_dict = vars(args)
 
@@ -56,7 +60,12 @@ elif 'pong' in args.env.lower():
     env = make_atari('PongNoFrameskip-v4')
     args_dict['Vmin'] = -20
     args_dict['Vmax'] = 20
-    num_frames = 1000000
+    num_frames = 4000000
+elif 'breakout' in args.env.lower():
+    env = gym.make('Breakout-v4')
+    args_dict['Vmin'] = 0
+    args_dict['Vmax'] = 350
+    num_frames = 4000000
 else: 
     raise ValueError('invalid environment')
 
@@ -87,7 +96,13 @@ elif 'cramer' in args.loss.lower():
 
 # initialize replay buffer
 replay_buffer = ReplayBuffer(replay_buffer_size)
-logger = Logger(args.exp_path)
+logger = Logger(args.base_dir)
+
+# Logging
+maybe_create_dir(args.base_dir)
+print_and_save_args(args, args.base_dir)
+writer = tensorboardX.SummaryWriter(log_dir=os.path.join(args.base_dir, 'TB'))
+print_and_save_args(args, args.base_dir)
 
 # build models
 current_model, target_model = [model(state_space, 
@@ -142,19 +157,17 @@ for i in range(1, num_frames + 1):
         update_target(current_model, target_model)
 
     if done:
-        episode_loss = losses[-episode_iters:] 
-        if len(losses) > 0: logger.log_train_episode(episode_reward, np.mean(episode_loss), episode_iters)
+        print_and_log_scalar(writer, 'episode_loss', np.mean(losses), episodes)
+        print_and_log_scalar(writer, 'episode_reward', episode_reward, episodes)
+        print_and_log_scalar(writer, 'episode_iters', episode_iters, episodes)
+        print('')
+
         state = env.reset()
-        episode_rewards += [episode_reward]
         episode_reward = 0
         episode_iters = 0
         episodes += 1
 
-        if episodes % 10 == 0 and args.verbose:
-            print('iteration {}'.format(i))
-            print('last 5 episode rewards {}'.format(str(episode_rewards[-5:])))
-            print('last 5 losses {}\n\n'.format(str(losses[-5:])))
-            # plot(i, episode_rewards, losses, bin_size=5, save=True)
+        # plot(i, episode_rewards, losses, bin_size=5, save=True)
 
 '''
 Eval Mode
@@ -172,19 +185,8 @@ while episode < args.eval_runs:
     episode_iters += 1
 
     if done:
-        logger.log_eval_episode(episode_reward, episode_iters)
+        print_and_log_scalar(writer, 'eval_episode_reward', episode_reward, episodes)
+        prind_and_log_scalar(writer, 'eval_episode_iters', episode_iters, episodes)
         state = env.reset()
-        eval_episode_rewards += [episode_reward]
         episode_reward = 0
         episode_iters = 0
-        episode += 1
-
-print('average eval reward : {}'.format(np.mean(eval_episode_rewards)))
-
-# save logs 
-logger.save_run()
-logger.log_to_common_file(args.exp_common_log)
-logger.signal_end()
-
-# save the model
-torch.save(current_model.state_dict(), os.path.join(args.exp_path, 'model.pth'))
